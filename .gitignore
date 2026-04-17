@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Environment variables (CRITICAL: Do NOT upload API keys to GitHub!)
+.env
+.env.local
+
+# IDEs
+.idea/
+.vscode/
+
+# Logs and outputs
+*.log
+*.docx
+*.doc
+
+# macOS garbage
+.DS_Store

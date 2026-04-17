@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="初中数学错题归因与靶向变式智能生成系统 - 基于AI的学情分析与个性化教学辅助平台">
+    <title>初中数学错题归因与靶向变式智能生成系统</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+    <!-- HTML-DOCX for real .docx generation -->
+    <script src="https://unpkg.com/html-docx-js/dist/html-docx.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- ═══════════════ 背景粒子装饰 ═══════════════ -->
+    <div class="bg-particles" id="bgParticles"></div>
+
+    <!-- ═══════════════ 顶部导航栏 ═══════════════ -->
+    <header class="header" id="header">
+        <div class="header-inner">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 40 40" fill="none">
+                        <rect x="2" y="2" width="36" height="36" rx="8" stroke="url(#logoGrad)" stroke-width="2.5"/>
+                        <path d="M12 28L20 12L28 28" stroke="url(#logoGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="20" cy="20" r="3" fill="url(#logoGrad)"/>
+                        <defs><linearGradient id="logoGrad" x1="0" y1="0" x2="40" y2="40">
+                            <stop stop-color="#6366f1"/><stop offset="1" stop-color="#06b6d4"/>
+                        </linearGradient></defs>
+                    </svg>
+                </div>
+                <div class="logo-text">
+                    <span class="logo-title">错题归因 · 靶向变式</span>
+                    <span class="logo-subtitle">初中数学智能分析系统</span>
+                </div>
+            </div>
+            <nav class="nav-links">
+                <a href="#upload-section" class="nav-link active" data-section="upload">
+                    <span class="nav-icon">📊</span> 数据上传
+                </a>
+                <a href="#analysis-section" class="nav-link" data-section="analysis">
+                    <span class="nav-icon">🔍</span> 归因诊断
+                </a>
+                <a href="#generate-section" class="nav-link" data-section="generate">
+                    <span class="nav-icon">✨</span> 变式生成
+                </a>
+            </nav>
+            <div class="header-actions">
+                <button class="settings-btn" id="openSettingsBtn">
+                    ⚙️ 模型设置
+                </button>
+                <div class="llm-status" id="llmStatus">
+                    <span class="status-dot"></span>
+                    <span class="status-text">检测中...</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══════════════ 主体内容 ═══════════════ -->
+    <main class="main-content">
+
+        <!-- ────── Hero 区域 ────── -->
+        <section class="hero-section" id="hero">
+            <div class="hero-content">
+                <div class="hero-badge">🏫 智能信息系统 · 学情智能分析</div>
+                <h1 class="hero-title">
+                    初中数学<span class="gradient-text">错题归因</span>与<br>
+                    <span class="gradient-text-alt">靶向变式</span>智能生成系统
+                </h1>
+                <p class="hero-desc">
+                    基于国产大语言模型，为一线数学教师提供<strong>考后数据智能分析</strong>、
+                    <strong>错因精准诊断</strong>、<strong>变式题自动生成</strong>三位一体的教学辅助方案
+                </p>
+                <div class="hero-features">
+                    <div class="feature-badge">
+                        <span class="feature-icon">📈</span>
+                        <span>数据分析与可视化</span>
+                    </div>
+                    <div class="feature-badge">
+                        <span class="feature-icon">🧠</span>
+                        <span>推理预测与策略辅助</span>
+                    </div>
+                    <div class="feature-badge">
+                        <span class="feature-icon">📝</span>
+                        <span>内容生成</span>
+                    </div>
+                </div>
+                <div class="hero-actions">
+                    <button class="btn btn-primary btn-lg" onclick="scrollToSection('upload-section')">
+                        <span>开始分析</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    </button>
+                    <button class="btn btn-outline btn-lg" onclick="downloadSampleExcel()">
+                        <span>下载示例数据</span>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="hero-card card-float-1">
+                    <div class="mini-chart" id="heroChart1"></div>
+                    <span>知识点掌握度</span>
+                </div>
+                <div class="hero-card card-float-2">
+                    <div class="mini-chart" id="heroChart2"></div>
+                    <span>错因分布</span>
+                </div>
+                <div class="hero-card card-float-3">
+                    <span class="big-number">5</span>
+                    <span>道靶向变式题</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- ────── 步骤1: 数据上传与分析 ────── -->
+        <section class="content-section" id="upload-section">
+            <div class="section-header">
+                <div class="step-badge">功能一</div>
+                <h2 class="section-title">数据分析与可视化</h2>
+                <p class="section-desc">上传班级测验的Excel成绩单或错题统计表，系统自动分析并生成知识点薄弱可视化图表</p>
+            </div>
+
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-zone" id="uploadZone">
+                    <div class="upload-icon">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="url(#uploadGrad)" stroke-width="1.5">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                            <defs><linearGradient id="uploadGrad" x1="0" y1="0" x2="24" y2="24">
+                                <stop stop-color="#6366f1"/><stop offset="1" stop-color="#06b6d4"/>
+                            </linearGradient></defs>
+                        </svg>
+                    </div>
+                    <h3 class="upload-title">拖拽Excel文件到此处</h3>
+                    <p class="upload-hint">或点击此区域选择文件（支持 .xlsx / .xls 格式）</p>
+                    <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
+                    
+                    <div class="upload-meta">
+                        <div class="meta-item">
+                            <div class="meta-icon">📋</div>
+                            <div>
+                                <strong>格式A - 成绩单</strong>
+                                <p>行=学生，列=知识点得分</p>
+                            </div>
+                        </div>
+                        <div class="meta-divider">或</div>
+                        <div class="meta-item">
+                            <div class="meta-icon">📊</div>
+                            <div>
+                                <strong>格式B - 错题统计表</strong>
+                                <p>知识点、错误率、错误人数</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 额外参数 -->
+                <div class="param-row">
+                    <div class="param-group">
+                        <label class="param-label">年级信息</label>
+                        <select id="gradeSelect" class="param-select">
+                            <option value="七年级">七年级</option>
+                            <option value="八年级">八年级</option>
+                            <option value="九年级" selected>九年级</option>
+                        </select>
+                    </div>
+                    <div class="param-group">
+                        <label class="param-label">考试类型</label>
+                        <select id="examSelect" class="param-select">
+                            <option value="月考" selected>月考</option>
+                            <option value="期中考试">期中考试</option>
+                            <option value="期末考试">期末考试</option>
+                            <option value="模拟考试">模拟考试</option>
+                            <option value="单元测验">单元测验</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 上传进度 -->
+            <div class="upload-progress" id="uploadProgress" style="display:none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <span class="progress-text" id="progressText">正在解析数据...</span>
+            </div>
+
+            <!-- 分析结果区域 -->
+            <div class="analysis-results" id="analysisResults" style="display:none;">
+                <div class="results-header">
+                    <h3>📊 数据分析结果</h3>
+                    <div class="results-actions">
+                        <span class="format-tag" id="formatTag"></span>
+                        <button class="btn btn-sm btn-outline" onclick="resetUpload()">重新上传</button>
+                    </div>
+                </div>
+
+                <!-- 统计卡片 -->
+                <div class="stats-grid" id="statsGrid"></div>
+
+                <!-- 图表区域 -->
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h4>🎯 知识点薄弱雷达图</h4>
+                            <p>全班各知识点掌握度一览</p>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="radarChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h4>📊 知识点错误率柱状图</h4>
+                            <p>按错误率从高到低排列</p>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="barChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 知识点详细表 -->
+                <div class="detail-table-card">
+                    <div class="chart-header">
+                        <h4>📋 知识点详细数据</h4>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="data-table" id="detailTable">
+                            <thead>
+                                <tr>
+                                    <th>排名</th>
+                                    <th>知识点</th>
+                                    <th>错误率</th>
+                                    <th>掌握率</th>
+                                    <th>严重程度</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detailTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 一键诊断 -->
+                <div class="action-banner">
+                    <div class="action-text">
+                        <h3>🧠 发现 <span id="weakCount">0</span> 个薄弱知识点</h3>
+                        <p>点击下方按钮，AI将对错误率最高的知识点进行深度错因归因分析</p>
+                    </div>
+                    <button class="btn btn-primary btn-lg" id="btnDiagnose" onclick="startDiagnosis()">
+                        <span>启动AI错因诊断</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ────── 步骤2: 错因归因诊断 ────── -->
+        <section class="content-section" id="analysis-section">
+            <div class="section-header">
+                <div class="step-badge">功能二</div>
+                <h2 class="section-title">推理预测与策略辅助</h2>
+                <p class="section-desc">AI推理出错误率极高的题目的具体错因，并为教师提供讲评策略建议</p>
+            </div>
+
+            <div class="diagnosis-results" id="diagnosisResults">
+                <div class="empty-state" id="diagnosisEmpty">
+                    <div class="empty-icon">🔍</div>
+                    <h3>暂无诊断结果</h3>
+                    <p>请先上传数据并点击"启动AI错因诊断"按钮</p>
+                </div>
+
+                <!-- AI诊断loading -->
+                <div class="ai-loading" id="diagnosisLoading" style="display:none;">
+                    <div class="ai-loading-animation">
+                        <div class="pulse-ring"></div>
+                        <div class="pulse-ring delay-1"></div>
+                        <div class="pulse-ring delay-2"></div>
+                        <div class="ai-brain">🧠</div>
+                    </div>
+                    <h3>AI 正在深度分析错因...</h3>
+                    <p>基于国产大模型进行推理归因，请稍候</p>
+                </div>
+
+                <!-- 诊断结果内容 -->
+                <div id="diagnosisContent" style="display:none;">
+                    <!-- 整体学情 -->
+                    <div class="overall-card" id="overallAnalysis"></div>
+                    <!-- 各知识点错因 -->
+                    <div class="diagnosis-list" id="diagnosisList"></div>
+                    <!-- 讲评策略 -->
+                    <div class="strategy-card" id="strategyCard"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ────── 步骤3: 变式题生成 ────── -->
+        <section class="content-section" id="generate-section">
+            <div class="section-header">
+                <div class="step-badge">功能三</div>
+                <h2 class="section-title">靶向变式训练题生成</h2>
+                <p class="section-desc">接入国产大模型，针对薄弱知识点自动生成3-5道难度递进的数学"变式训练题"及详细解析</p>
+            </div>
+
+            <!-- 生成参数 -->
+            <div class="generate-config" id="generateConfig">
+                <div class="config-card">
+                    <h4>🎯 选择目标知识点</h4>
+                    <div class="kp-selector" id="kpSelector">
+                        <div class="empty-hint">请先上传数据分析后选择薄弱知识点</div>
+                    </div>
+                </div>
+                <div class="config-row">
+                    <div class="config-item">
+                        <label>题目数量</label>
+                        <select id="questionCount" class="param-select">
+                            <option value="3">3道</option>
+                            <option value="5" selected>5道</option>
+                            <option value="7">7道</option>
+                        </select>
+                    </div>
+                    <div class="config-item">
+                        <label>难度分布</label>
+                        <select id="difficultyMode" class="param-select">
+                            <option value="递进" selected>难度递进（推荐）</option>
+                            <option value="基础">全部基础</option>
+                            <option value="提升">全部提升</option>
+                        </select>
+                    </div>
+                    <div class="config-item">
+                        <button class="btn btn-primary btn-lg btn-full" id="btnGenerate" onclick="generateVariants()">
+                            ✨ 生成变式训练题
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 生成结果 -->
+            <div class="generate-results" id="generateResults">
+                <div class="results-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+                    <h3>📝 题目预览</h3>
+                    <button id="btnExportWord" class="btn btn-sm" disabled onclick="exportToWord()" style="background-color: #f8fafc; color: #94a3b8; border: 1px solid #cbd5e1; cursor: not-allowed; display: inline-flex; align-items: center; gap: 8px;">
+                        📄 导出为 Word (Docx)
+                    </button>
+                </div>
+                
+                <div class="empty-state" id="generateEmpty">
+                    <div class="empty-icon">✨</div>
+                    <h3>选择薄弱知识点后生成变式题</h3>
+                    <p>系统将自动生成难度递进的数学变式训练题及详细解析</p>
+                </div>
+
+                <div class="ai-loading" id="generateLoading" style="display:none;">
+                    <div class="ai-loading-animation">
+                        <div class="pulse-ring"></div>
+                        <div class="pulse-ring delay-1"></div>
+                        <div class="pulse-ring delay-2"></div>
+                        <div class="ai-brain">✍️</div>
+                    </div>
+                    <h3>AI 正在生成变式训练题...</h3>
+                    <p>结合错因分析，设计针对性变式题目</p>
+                </div>
+
+                <div id="generateContent" style="display:none;"></div>
+            </div>
+        </section>
+
+        <!-- ────── 系统说明 ────── -->
+        <section class="content-section" id="about-section">
+            <div class="about-grid">
+                <div class="about-card">
+                    <div class="about-icon">🏗️</div>
+                    <h4>技术架构</h4>
+                    <p>前端 HTML/CSS/JS + Chart.js 可视化<br>后端 Python Flask + Pandas 数据分析<br>接入国产大模型 API（DeepSeek/智谱清言等）</p>
+                </div>
+                <div class="about-card">
+                    <div class="about-icon">🎯</div>
+                    <h4>应用场景</h4>
+                    <p>月考/大考后数学教师快速统计全班知识薄弱点，为不同学生精准匹配靶向变式训练题，实现考后精准教学</p>
+                </div>
+                <div class="about-card">
+                    <div class="about-icon">⚡</div>
+                    <h4>核心优势</h4>
+                    <p>数据驱动的错因归因分析、AI自动生成递进变式题、一键讲评策略建议，三位一体助力教师减负增效</p>
+                </div>
+            </div>
+            <div class="ai-disclaimer">
+                <span>⚠️ 本系统生成的分析报告和变式训练题由 AI 生成，仅供教师参考，请结合实际教学情况人工审核后使用。</span>
+            </div>
+        </section>
+    </main>
+
+    <!-- ═══════════════ 页脚 ═══════════════ -->
+    <footer class="footer">
+        <p>初中数学错题归因与靶向变式智能生成系统 · 创AI案例 · 智能信息系统</p>
+        <p class="footer-sub">基于国产大语言模型构建 | 数据分析与可视化 · 推理预测与策略辅助 · 内容生成</p>
+    </footer>
+
+    <!-- ═══════════════ 模型设置模态框 ═══════════════ -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal-content settings-modal">
+            <div class="modal-header">
+                <h3>⚙️ 智能体模型配置</h3>
+                <button class="close-modal" id="closeSettingsBtn">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>选择 AI 引擎</label>
+                    <select id="llmProviderSelect" class="form-control">
+                        <option value="qwen">通义千问 (Qwen)</option>
+                        <option value="deepseek">深度求索 (DeepSeek)</option>
+                        <option value="zhipu">智谱清言 (GLM)</option>
+                        <option value="custom">自定义 (其它 OpenAI 兼容源)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>模型名称 (Model)</label>
+                    <input type="text" id="llmModelInput" class="form-control" placeholder="例如: qwen-max">
+                </div>
+                <div class="form-group">
+                    <label>接口地址 (Base URL)</label>
+                    <input type="text" id="llmUrlInput" class="form-control" placeholder="https://api.deepseek.com/v1">
+                </div>
+                <div class="form-group">
+                    <label>密钥 (API Key)</label>
+                    <input type="password" id="llmKeyInput" class="form-control" placeholder="输入申请的 API Key (sk-...)">
+                    <p class="form-helper" style="font-size: 12px; color: #64748b; margin-top: 5px;">安全提示：您的密钥将保存在本地服务器 .env 文件中永久生效。</p>
+                </div>
+                <div class="form-actions" style="margin-top: 25px; display: flex; justify-content: flex-end; gap: 15px;">
+                    <button class="btn btn-secondary" id="cancelSettingsBtn">取消</button>
+                    <button class="btn btn-primary" id="saveSettingsBtn">保存并立即生效</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
