@@ -7,9 +7,10 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# 复制依赖文件并安装（直接装在全局环境，防止路径错位）
+# 复制依赖文件并安装（显式安装 setuptools，避免 gunicorn 在精简镜像中缺少 pkg_resources）
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r requirements.txt
 
 # 复制其余代码
 COPY . .
