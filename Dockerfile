@@ -21,7 +21,6 @@ COPY --chown=user . /home/user/app
 # Zeabur 会自动通过 $PORT 环境变量传递
 EXPOSE 8080
 
-# 启动口令：使用工业级 Gunicorn 拉起 Flask，绑定在 $PORT 端口
-# 如果 $PORT 未定义，则默认使用 8080
-CMD ["sh", "-c", "gunicorn backend.app:app -b 0.0.0.0:${PORT:-8080} --timeout 120"]
+# 启动口令：强制使用 python3 模块驱动方式拉起 Gunicorn，彻底解决路径报错
+CMD ["sh", "-c", "python3 -m gunicorn.app.wsgiapp backend.app:app -b 0.0.0.0:${PORT:-8080} --timeout 120"]
 
