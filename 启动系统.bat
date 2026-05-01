@@ -27,7 +27,7 @@ call backend\.venv\Scripts\activate.bat
 
 REM 安装依赖
 echo [信息] 正在检查依赖...
-pip install -r backend\requirements.txt -q
+pip install -r requirements.txt -q
 
 REM 检查.env配置
 if not exist "backend\.env" (

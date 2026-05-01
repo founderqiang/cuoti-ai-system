@@ -201,7 +201,7 @@ def call_llm(system_prompt: str, user_prompt: str, temperature: float = 0.7):
                 {"role": "user", "content": user_prompt}
             ],
             temperature=temperature,
-            max_tokens=4096
+            max_tokens=8192
         )
         return response.choices[0].message.content
     except Exception as e:
@@ -337,7 +337,12 @@ def generate_variants():
 4. 必须提供详细的解题步骤和易错点提醒
 5. 题目要新颖，避免简单改数字的低级变式
 6. 【纯文本无图排版，禁用LaTeX】：坚决不使用SVG或代码绘图。使用高质量文字描述图形，让学生自行画图。【极其重要】：绝不能使用任何 LaTeX 数学代码（严禁出现 `\frac`, `\Rightarrow` 等）！所有的数学公式必须写成键盘能直接敲出的纯字符形式（例如使用 `b/(2a)`，`x^2`，`=>`），保证导出到普通 Word 后肉眼直接可读。
-7. 【详略得当与防止截断】：为了防止输出过长被断开，必须严格控制节奏：每道题的【详细解析】需保持在 400 字左右，可以比400字少点，但不能超出太多。既要清晰地展示核心等式、关键定理和主干推导步骤以保证学生能看懂，也要点到为止，【绝对禁止】过度发散、举无关特例或啰嗦计算细节！必须且只能生成 {count} 道题目，满 {count} 题立刻收尾。
+7. 【详细解析——极度精简原则】：每道题的【详细解析】严格控制在 200 字以内，必须提炼成 3~5 个简明步骤（用 ① ② ③ 分步），每一句都是直击结论的干货。彻底禁止以下行为：
+   - 禁止自我质疑、自我修正、推倒重来（如"更严谨的说法…""其实…""我们重新推导…"）—— 直接给出最终正确结论
+   - 禁止写"由图像可看出""推测""可能""大概""似乎是"等不确定用语 —— 每个结论必须有明确依据
+   - 禁止举无关特例、发散讨论、冗余的定理解释
+   - 禁止复述题干已知条件凑字数
+8. 【全局长度控制】：必须且只能生成 {count} 道题目，满 {count} 题立刻停止输出，不得追加任何总结、备注或额外说明。
 
 输出格式要求：
 请直接输出纯文本（使用清晰的中文排版，方便教师直接复制到Word中），不要使用任何JSON格式，也不要包含任何英文的格式标签。
@@ -355,7 +360,7 @@ def generate_variants():
 **【参考答案】**
 ...
 
-**【详细解析】**
+**【详细解析】**（限 200 字以内，用 ①②③ 分步，精简到极致）
 ...
 
 **【易错点提醒】**
@@ -388,14 +393,23 @@ def generate_variants():
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.8,
-            max_tokens=4096,
+            max_tokens=8192,
             stream=True
         )
         
         def generate():
-            for chunk in completion:
-                if chunk.choices[0].delta.content is not None:
-                    yield chunk.choices[0].delta.content
+            try:
+                for chunk in completion:
+                    if hasattr(chunk, 'choices') and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta
+                        if hasattr(delta, 'content') and delta.content is not None:
+                            yield delta.content
+                        if getattr(chunk.choices[0], 'finish_reason', None) == 'length':
+                            yield "\n\n⚠️ **[系统提示：大模型生成已达到单次最大长度限制被强制截断，建议将生成题数改为3道重试]**"
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                yield f"\n\n[后台生成出错: {str(e)}]"
                     
         return Response(stream_with_context(generate()), mimetype='text/plain')
     except Exception as e:

@@ -732,6 +732,13 @@ async function generateVariants() {
             // 根据需要可以加自动滚动逻辑，但这里高度可能没那么快超出屏幕，故省略
         }
         
+        // 确保最后缓冲区的内容被刷新并渲染
+        const finalChunk = decoder.decode();
+        if (finalChunk) {
+            fullText += finalChunk;
+            target.innerHTML = marked.parse(fullText);
+        }
+        
         // 渲染完毕后，拦截内部可能存在的 python matplotlib 代码兵执行
         const preElements = target.querySelectorAll('pre code.language-python');
         for (const codeEl of preElements) {
