@@ -21,6 +21,8 @@ ENV/
 *.log
 *.docx
 *.doc
+.docx_render_check/
+artifacts/rendered/
 
 # macOS garbage
 .DS_Store

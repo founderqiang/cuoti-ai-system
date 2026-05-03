@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="初中数学错题归因与靶向变式智能生成系统 - 基于AI的学情分析与个性化教学辅助平台">
-    <title>初中数学错题归因与靶向变式智能生成系统</title>
+    <meta name="description" content="面向精准教学的错题归因与靶向变式智能生成系统 - 基于AI的学情分析与个性化教学辅助平台">
+    <title>面向精准教学的错题归因与靶向变式智能生成系统</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
@@ -12,6 +12,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <!-- Marked.js for markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+    <!-- docx.js for structured .docx generation -->
+    <script src="https://unpkg.com/docx@9.5.1/dist/index.umd.cjs"></script>
     <!-- HTML-DOCX for real .docx generation -->
     <script src="https://unpkg.com/html-docx-js/dist/html-docx.js"></script>
     <link rel="stylesheet" href="style.css">
@@ -70,7 +72,7 @@
             <div class="hero-content">
                 <div class="hero-badge">🏫 智能信息系统 · 学情智能分析</div>
                 <h1 class="hero-title">
-                    初中数学<span class="gradient-text">错题归因</span>与<br>
+                    面向精准教学的<span class="gradient-text">错题归因</span>与<br>
                     <span class="gradient-text-alt">靶向变式</span>智能生成系统
                 </h1>
                 <p class="hero-desc">
@@ -112,7 +114,7 @@
                     <span>错因分布</span>
                 </div>
                 <div class="hero-card card-float-3">
-                    <span class="big-number">5</span>
+                    <div class="mini-icon" id="heroIcon"></div>
                     <span>道靶向变式题</span>
                 </div>
             </div>
@@ -307,7 +309,7 @@
             <div class="section-header">
                 <div class="step-badge">功能三</div>
                 <h2 class="section-title">靶向变式训练题生成</h2>
-                <p class="section-desc">接入国产大模型，针对薄弱知识点自动生成3-5道难度递进的数学"变式训练题"及详细解析</p>
+                <p class="section-desc">接入国产大模型，针对薄弱知识点自动生成3-7道难度递进的数学"变式训练题"及详细解析</p>
             </div>
 
             <!-- 生成参数 -->
@@ -400,7 +402,7 @@
 
     <!-- ═══════════════ 页脚 ═══════════════ -->
     <footer class="footer">
-        <p>初中数学错题归因与靶向变式智能生成系统 · 创AI案例 · 智能信息系统</p>
+        <p>面向精准教学的错题归因与靶向变式智能生成系统 · 创AI案例 · 智能信息系统</p>
         <p class="footer-sub">基于国产大语言模型构建 | 数据分析与可视化 · 推理预测与策略辅助 · 内容生成</p>
     </footer>
 
