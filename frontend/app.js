@@ -20,7 +20,7 @@ let lastGeneratedText = '';
 const DOC_QUESTION_TITLE_PATTERN = /^【题目\s*\d+】$/;
 const DOC_SECTION_LABEL_PATTERN = /^【(参考答案|详细解析|易错点提醒)】$/;
 const DOC_KEYPOINT_PATTERN = /^[（(]考查要点[:：]/;
-const DOC_GEOMETRY_NOTE_PATTERN = /^注[:：].*(技术限制|规范绘制|文字描述自行绘制|根据以上描述自行规范绘制)/;
+const DOC_GEOMETRY_NOTE_PATTERN = /^(\*\*|__)?注[:：].*(技术限制|规范绘制|文字描述自行绘制|根据以上描述自行规范绘制)/;
 
 // ── 初始化 ──────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -1116,8 +1116,8 @@ function buildAttr(type, mode) {
             word: 'margin:10pt 0 6pt;font-size:11pt;font-weight:700;color:#0f172a;'
         },
         'doc-geometry-note': {
-            preview: 'margin:0 0 12px;padding:11px 13px;border-radius:10px;border:1px solid rgba(250,204,21,0.28);background:rgba(250,204,21,0.08);font-size:14px;line-height:1.85;color:#fde68a;',
-            word: 'margin:0 0 10pt;padding:8pt 10pt;border:1pt solid #d6dbe4;background:#f8fafc;font-size:10.8pt;line-height:1.8;color:#334155;'
+            preview: 'margin:0 0 12px;padding:11px 13px;border-radius:10px;border:1px solid rgba(251,191,36,0.4);background:rgba(251,191,36,0.12);font-size:14px;line-height:1.85;color:#fbbf24;font-weight:700;',
+            word: 'margin:0 0 10pt;padding:8pt 10pt;border:1.5pt solid #fcd34d;background:#fffbeb;font-size:10.8pt;line-height:1.8;color:#b45309;font-weight:700;'
         },
         'doc-paragraph': {
             preview: 'margin:0 0 12px;font-size:15px;line-height:1.95;color:#e2e8f0;',
@@ -1233,10 +1233,15 @@ async function buildDocxBlob(structure) {
             children.push(
                 new Paragraph({
                     spacing: { after: 140 },
-                    shading: { fill: 'F9FAFB', type: ShadingType.CLEAR },
-                    border: borders,
+                    shading: { fill: 'FFFBEB', type: ShadingType.CLEAR },
+                    border: {
+                        top: { style: BorderStyle.SINGLE, size: 4, color: 'FCD34D' },
+                        bottom: { style: BorderStyle.SINGLE, size: 4, color: 'FCD34D' },
+                        left: { style: BorderStyle.SINGLE, size: 4, color: 'FCD34D' },
+                        right: { style: BorderStyle.SINGLE, size: 4, color: 'FCD34D' },
+                    },
                     indent: { left: 120, right: 120 },
-                    children: [makeRun(question.geometryNote, { font: 'Microsoft YaHei', size: 22, color: '374151' })]
+                    children: [makeRun(question.geometryNote, { font: 'Microsoft YaHei', size: 22, color: 'B45309', bold: true })]
                 })
             );
         }
