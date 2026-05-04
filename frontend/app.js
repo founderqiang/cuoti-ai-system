@@ -17,8 +17,8 @@ let selectedKP = null;         // 当前选中的知识点
 let radarChartInstance = null;
 let barChartInstance = null;
 let lastGeneratedText = '';
-const DOC_QUESTION_TITLE_PATTERN = /^【题目\s*\d+】$/;
-const DOC_SECTION_LABEL_PATTERN = /^【(参考答案|详细解析|易错点提醒)】$/;
+const DOC_QUESTION_TITLE_PATTERN = /【题目\s*\d+】/;
+const DOC_SECTION_LABEL_PATTERN = /【(参考答案|详细解析|易错点提醒)】/;
 const DOC_KEYPOINT_PATTERN = /^[（(]考查要点[:：]/;
 const DOC_GEOMETRY_NOTE_PATTERN = /^(\*\*|__)?注[:：].*(技术限制|规范绘制|文字描述自行绘制|根据以上描述自行规范绘制)/;
 
@@ -607,11 +607,14 @@ function renderDiagnosisResults(data, rawText) {
     container.style.display = 'block';
     
     if (!data) {
-        // 无法解析JSON时展示原始文本
+        // 无法解析JSON时展示原始文本，并给出明确提示
         container.innerHTML = `
             <div class="overall-card">
-                <h4>🧠 AI 诊断结果</h4>
-                <div style="white-space: pre-wrap; line-height: 1.9; font-size: 14px; color: var(--text-secondary);">
+                <h4> AI 诊断结果</h4>
+                <div style="margin:12px 0;padding:12px 16px;border:1px solid rgba(251,191,36,0.4);border-radius:10px;background:rgba(251,191,36,0.10);font-size:13px;color:#fbbf24;line-height:1.7;">
+                    <strong>注意：</strong>AI 返回了非结构化文本，系统无法自动解析为诊断卡片。以下为原始输出，请参考使用。
+                </div>
+                <div style="white-space: pre-wrap; line-height: 1.9; font-size: 14px; color: var(--text-secondary); max-height: 600px; overflow-y: auto;">
                     ${escapeHtml(rawText)}
                 </div>
             </div>
@@ -726,6 +729,10 @@ async function generateVariants() {
         </div>
     `;
     
+    // 隐藏底部导出区域，等生成完毕再显示
+    const bottomArea = document.getElementById('bottomExportArea');
+    if (bottomArea) bottomArea.style.display = 'none';
+    
     // 生成时重置导出按钮状态
     const exportBtn = document.getElementById('btnExportWord');
     if (exportBtn) {
@@ -767,6 +774,9 @@ async function generateVariants() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let fullText = "";
+        let lastRenderTime = 0;
+        let truncated = false;
+        const TRUNCATION_MARKER = '系统提示：大模型生成已达到单次最大长度限制';
         
         while (true) {
             const { value, done } = await reader.read();
@@ -775,17 +785,34 @@ async function generateVariants() {
             const chunk = decoder.decode(value, {stream: true});
             fullText += chunk;
             
-            // 实时使用 marked 解析 Markdown 并渲染
-            renderGeneratedContent(target, fullText);
+            // 检测截断标记
+            if (!truncated && fullText.includes(TRUNCATION_MARKER)) {
+                truncated = true;
+            }
             
-            // 根据需要可以加自动滚动逻辑，但这里高度可能没那么快超出屏幕，故省略
+            // 节流渲染：每 150ms 最多重绘一次，避免 UI 卡顿
+            const now = Date.now();
+            if (now - lastRenderTime >= 150) {
+                renderGeneratedContent(target, fullText);
+                lastRenderTime = now;
+            }
         }
         
         // 确保最后缓冲区的内容被刷新并渲染
         const finalChunk = decoder.decode();
         if (finalChunk) {
             fullText += finalChunk;
-            renderGeneratedContent(target, fullText);
+        }
+        // 最后一次完整渲染
+        renderGeneratedContent(target, fullText);
+        
+        // 如果检测到截断，在预览顶部插入醒目的截断警告
+        if (truncated || fullText.includes(TRUNCATION_MARKER)) {
+            const warningEl = document.createElement('div');
+            warningEl.style.cssText = 'margin:0 0 16px;padding:14px 18px;border:2px solid #ef4444;border-radius:10px;background:rgba(239,68,68,0.12);color:#fca5a5;font-size:14px;line-height:1.7;font-weight:600;';
+            warningEl.innerHTML = '<strong>⚠️ 内容已被截断</strong><br>大模型生成达到单次最大长度限制，输出内容不完整。建议减少生成题数后重新生成。';
+            target.insertBefore(warningEl, target.firstChild);
+            truncated = true;
         }
         
         // 渲染完毕后，拦截内部可能存在的 python matplotlib 代码兵执行
@@ -823,13 +850,42 @@ async function generateVariants() {
         btn.disabled = false;
         btn.textContent = '✨ 重新生成变式题';
         
-        // 激活导出按钮
+        // 激活导出按钮：解析生成内容，确认是否有实际题目
         const exportBtn = document.getElementById('btnExportWord');
-        if (exportBtn && document.getElementById('streamTarget').innerHTML.length > 50) {
-            exportBtn.disabled = false;
-            exportBtn.style.cursor = 'pointer';
-            exportBtn.style.color = '#6366f1';
-            exportBtn.style.borderColor = '#6366f1';
+        const bottomArea = document.getElementById('bottomExportArea');
+        const parsed = parseGeneratedStructure(lastGeneratedText);
+        const hasQuestions = parsed.sections.some(s => s.questions && s.questions.length > 0);
+        const isTruncated = (typeof truncated !== 'undefined' && truncated);
+        
+        if (exportBtn) {
+            if (isTruncated) {
+                exportBtn.disabled = true;
+                exportBtn.style.cursor = 'not-allowed';
+                exportBtn.style.color = '#94a3b8';
+                exportBtn.style.borderColor = '#94a3b8';
+                showToast('内容被截断，请减少生成题数后重新生成', 'error');
+            } else if (hasQuestions) {
+                exportBtn.disabled = false;
+                exportBtn.style.cursor = 'pointer';
+                exportBtn.style.color = '#6366f1';
+                exportBtn.style.borderColor = '#6366f1';
+            }
+        }
+        
+        // 底部导出按钮：与上方按钮同步状态
+        if (bottomArea) {
+            if (hasQuestions && !isTruncated) {
+                bottomArea.style.display = 'block';
+                bottomArea.innerHTML = `
+                    <button id="btnExportWordBottom" class="btn btn-sm" onclick="exportToWord()"
+                        style="background-color:#f8fafc;color:#6366f1;border:1px solid #6366f1;cursor:pointer;
+                        display:inline-flex;align-items:center;gap:8px;padding:8px 20px;font-size:14px;">
+                        📄 导出为 Word (Docx)
+                    </button>
+                `;
+            } else {
+                bottomArea.style.display = 'none';
+            }
         }
     }
 }
@@ -839,11 +895,19 @@ window.exportToWord = async function() {
     const target = document.getElementById('streamTarget');
     if (!target) return;
     
-    // 显示处理状态
+    // 显示处理状态：同时禁用上下两个导出按钮
     const btn = document.getElementById('btnExportWord');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<span>⏳ 正在整理 Word 版式...</span>';
-    btn.disabled = true;
+    const btnBottom = document.getElementById('btnExportWordBottom');
+    const originalText = btn ? btn.innerHTML : '';
+    const originalBottomText = btnBottom ? btnBottom.innerHTML : '';
+    if (btn) {
+        btn.innerHTML = '<span>⏳ 正在整理 Word 版式...</span>';
+        btn.disabled = true;
+    }
+    if (btnBottom) {
+        btnBottom.innerHTML = '<span>⏳ 正在整理 Word 版式...</span>';
+        btnBottom.disabled = true;
+    }
     
     try {
         const structure = parseGeneratedStructure(lastGeneratedText || target.textContent || '');
@@ -886,8 +950,14 @@ window.exportToWord = async function() {
     } catch (err) {
         showToast('导出失败: ' + err.message, 'error');
     } finally {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
+        if (btn) {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+        if (btnBottom) {
+            btnBottom.innerHTML = originalBottomText;
+            btnBottom.disabled = false;
+        }
     }
 };
 
@@ -902,13 +972,42 @@ function renderGeneratedContent(target, markdownText) {
     lastGeneratedText = markdownText;
     const structure = parseGeneratedStructure(markdownText);
     target.innerHTML = buildStructuredDocumentHtml(structure, 'preview');
+    
+    // 渲染数学公式
+    if (window.renderMathInElement) {
+        renderMathInElement(target, {
+            delimiters: [
+                {left: '$', right: '$', display: false},
+                {left: '$$', right: '$$', display: true}
+            ],
+            throwOnError: false
+        });
+    }
 }
 
 function parseGeneratedStructure(rawText) {
     const normalized = String(rawText || '')
         .replace(/\r\n/g, '\n')
         .replace(/\r/g, '\n');
-    const lines = normalized.split('\n').map(line => line.trim()).filter(Boolean);
+    // 预处理：过滤掉 LLM 常见的自我修正/思考残留行
+    const SELF_CORRECT_PATTERNS = [
+        /修正版/, /修改版/, /建议改为/, /修正后/, /重写/, /重新生成/,
+        /推倒重来/, /换个思路/, /反思/, /检查发现/, /调整方案/,
+        /修订版本/, /最终版/, /草稿版/, /废弃版本/
+    ];
+    const lines = normalized.split('\n')
+        .map(line => line.trim())
+        .filter(line => {
+            // 过滤纯分隔线或空行
+            if (!line) return false;
+            // 过滤自我修正行（整行只包含修正提示词）
+            for (const pat of SELF_CORRECT_PATTERNS) {
+                if (pat.test(line) && line.length < 60) return false;
+            }
+            // 过滤 LLM 的 "思考自言自语" 行（以特定模式开头且非题目内容）
+            if (/^(等等|稍等|让我|OK[，,]?|好的[，,]?|收到[，,]?|明白[，,]?|唔[，,]?)/.test(line) && line.length < 20) return false;
+            return true;
+        });
     const structure = {
         title: selectedKP ? `${selectedKP} 靶向变式训练` : '',
         meta: '',
@@ -918,9 +1017,47 @@ function parseGeneratedStructure(rawText) {
     let currentSection = null;
     let currentQuestion = null;
     let currentMode = 'prompt';
+    const seenQuestionNumbers = new Set();
 
     const flushQuestion = () => {
         if (currentQuestion) {
+            // 提取题号用于去重
+            const numMatch = currentQuestion.title.match(/【题目\s*(\d+)】/);
+            const qNum = numMatch ? parseInt(numMatch[1]) : null;
+
+            // 题号去重：如果该题号已出现过，跳过此题
+            if (qNum !== null && seenQuestionNumbers.has(qNum)) {
+                currentQuestion = null;
+                currentMode = 'prompt';
+                return;
+            }
+            if (qNum !== null) {
+                seenQuestionNumbers.add(qNum);
+            }
+
+            // 验证题目是否有实际内容（题干非空）
+            const hasContent = currentQuestion.prompt.length > 0;
+            if (!hasContent && currentQuestion.answer.length === 0 && currentQuestion.analysis.length === 0) {
+                currentQuestion = null;
+                currentMode = 'prompt';
+                return;
+            }
+
+            // 内容长度校验：合并题干、答案、解析总字符数，过长则截断提示
+            const totalLen = [...currentQuestion.prompt, ...currentQuestion.answer, ...currentQuestion.analysis]
+                .reduce((s, l) => s + l.length, 0);
+            if (totalLen > 3000) {
+                currentQuestion.prompt = currentQuestion.prompt.map(line =>
+                    line.length > 500 ? line.substring(0, 500) + '...' : line
+                );
+                currentQuestion.analysis = currentQuestion.analysis.slice(0, 8).map(line =>
+                    line.length > 400 ? line.substring(0, 400) + '...' : line
+                );
+                if (currentQuestion.analysis.length < (currentQuestion.answer.length > 0 ? 1 : 0) + 3) {
+                    currentQuestion.analysis.push('（解析内容过长已自动精简）');
+                }
+            }
+
             if (!currentSection) {
                 currentSection = { title: '题目内容', questions: [] };
                 structure.sections.push(currentSection);
@@ -955,7 +1092,12 @@ function parseGeneratedStructure(rawText) {
             return;
         }
 
-        const cleanedLine = stripMarkdownStrong(line);
+        const cleanedLine = line.replace(/^[#*>\-\s]+/, '').replace(/[#*>\-\s]+$/, '').trim();
+
+        // 跳过可能包含自我修正的标题行（如 "【题目修正版】【题目 1】"）
+        for (const pat of SELF_CORRECT_PATTERNS) {
+            if (pat.test(cleanedLine)) return;
+        }
 
         if (/^针对错因[:：]/.test(cleanedLine)) {
             structure.meta = cleanedLine;
@@ -1010,6 +1152,9 @@ function parseGeneratedStructure(rawText) {
     });
 
     flushQuestion();
+
+    // 过滤掉没有任何题目的空 section（LLM 可能输出空档位标题）
+    structure.sections = structure.sections.filter(s => s.questions && s.questions.length > 0);
 
     if (!structure.title) {
         structure.title = selectedKP ? `${selectedKP} 靶向变式训练` : '靶向变式训练';
@@ -1145,6 +1290,7 @@ function stripMarkdownStrong(text) {
 function formatInlineText(text) {
     return escapeHtml(text)
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\$([^\$]+)\$/g, '<span class="math-inline">$$$1$$</span>')
         .replace(/`([^`]+)`/g, '<span style="font-family:Consolas, monospace;">$1</span>');
 }
 
@@ -1164,8 +1310,405 @@ async function buildDocxBlob(structure) {
         AlignmentType,
         Header,
         Footer,
-        PageNumber
+        PageNumber,
+        Math,
+        MathRun,
+        MathFraction,
+        MathRadical,
+        MathSuperScript,
+        MathSubScript
     } = window.docx;
+
+    /**
+     * 增强型 LaTeX → docx.Math 解析器：全面支持初中数学常见公式排版
+     * 将所有能用数学公式表示的符号标准化为 Word 数学公式格式
+     */
+    const parseMathToDocx = (latex) => {
+        const children = [];
+        let i = 0;
+
+        const extractBraced = (str, start) => {
+            let count = 0;
+            let firstBrace = str.indexOf('{', start);
+            if (firstBrace === -1) return { content: '', next: start };
+            for (let j = firstBrace; j < str.length; j++) {
+                if (str[j] === '{') count++;
+                else if (str[j] === '}') {
+                    count--;
+                    if (count === 0) return { content: str.substring(firstBrace + 1, j), next: j + 1 };
+                }
+            }
+            return { content: str.substring(firstBrace + 1), next: str.length };
+        };
+
+        const extractBracketed = (str, start) => {
+            let count = 0;
+            let firstBracket = str.indexOf('[', start);
+            if (firstBracket === -1) return { content: '', next: start };
+            for (let j = firstBracket; j < str.length; j++) {
+                if (str[j] === '[') count++;
+                else if (str[j] === ']') {
+                    count--;
+                    if (count === 0) return { content: str.substring(firstBracket + 1, j), next: j + 1 };
+                }
+            }
+            return { content: str.substring(firstBracket + 1), next: str.length };
+        };
+
+        // ── 运算符、函数名 ──
+        const OPERATOR_NAMES = {
+            '\\sin': 'sin', '\\cos': 'cos', '\\tan': 'tan', '\\csc': 'csc', '\\sec': 'sec', '\\cot': 'cot',
+            '\\arcsin': 'arcsin', '\\arccos': 'arccos', '\\arctan': 'arctan',
+            '\\log': 'log', '\\ln': 'ln', '\\lg': 'lg',
+            '\\lim': 'lim', '\\max': 'max', '\\min': 'min',
+            '\\gcd': 'gcd', '\\lcm': 'lcm'
+        };
+
+        // ── 完整符号映射表 ──
+        const COMMANDS = {
+            // 希腊字母小写
+            '\\alpha': 'α', '\\beta': 'β', '\\gamma': 'γ', '\\delta': 'δ',
+            '\\epsilon': 'ε', '\\varepsilon': 'ε', '\\zeta': 'ζ', '\\eta': 'η',
+            '\\theta': 'θ', '\\vartheta': 'ϑ', '\\iota': 'ι', '\\kappa': 'κ',
+            '\\lambda': 'λ', '\\mu': 'μ', '\\nu': 'ν', '\\xi': 'ξ',
+            '\\omicron': 'ο', '\\pi': 'π', '\\varpi': 'ϖ', '\\rho': 'ρ', '\\varrho': 'ϱ',
+            '\\sigma': 'σ', '\\varsigma': 'ς', '\\tau': 'τ', '\\upsilon': 'υ',
+            '\\phi': 'φ', '\\varphi': 'ϕ', '\\chi': 'χ', '\\psi': 'ψ', '\\omega': 'ω',
+            // 希腊字母大写
+            '\\Gamma': 'Γ', '\\Delta': 'Δ', '\\Theta': 'Θ', '\\Lambda': 'Λ',
+            '\\Xi': 'Ξ', '\\Pi': 'Π', '\\Sigma': 'Σ', '\\Upsilon': 'Υ',
+            '\\Phi': 'Φ', '\\Psi': 'Ψ', '\\Omega': 'Ω',
+            // 关系符
+            '\\le': '≤', '\\leq': '≤', '\\ge': '≥', '\\geq': '≥',
+            '\\neq': '≠', '\\ne': '≠', '\\equiv': '≡', '\\approx': '≈',
+            '\\sim': '∼', '\\simeq': '≃', '\\cong': '≅', '\\propto': '∝',
+            '\\parallel': '∥', '\\perp': '⊥', '\\mid': '∣', '\\nmid': '∤',
+            '\\ll': '≪', '\\gg': '≫',
+            '\\subset': '⊂', '\\supset': '⊃', '\\subseteq': '⊆', '\\supseteq': '⊇',
+            '\\in': '∈', '\\ni': '∋', '\\notin': '∉',
+            // 箭头
+            '\\to': '→', '\\rightarrow': '→', '\\Rightarrow': '⇒',
+            '\\leftarrow': '←', '\\Leftarrow': '⇐', '\\leftrightarrow': '↔',
+            '\\Leftrightarrow': '⇔', '\\mapsto': '↦', '\\longmapsto': '⟼',
+            '\\longrightarrow': '⟶', '\\Longrightarrow': '⟹',
+            '\\uparrow': '↑', '\\downarrow': '↓', '\\updownarrow': '↕',
+            // 二元运算符
+            '\\times': '×', '\\div': '÷', '\\cdot': '·', '\\pm': '±', '\\mp': '∓',
+            '\\ast': '∗', '\\bullet': '•',
+            '\\oplus': '⊕', '\\ominus': '⊖', '\\otimes': '⊗', '\\oslash': '⊘', '\\odot': '⊙',
+            '\\wedge': '∧', '\\vee': '∨', '\\setminus': '∖',
+            // 大型运算符
+            '\\sum': '∑', '\\prod': '∏', '\\int': '∫', '\\iint': '∬', '\\iiint': '∭', '\\oint': '∮', '\\coprod': '∐',
+            // 几何符号
+            '\\angle': '∠', '\\triangle': '△', '\\triangledown': '▽',
+            '\\square': '□', '\\diamond': '◇', '\\bigcirc': '◯',
+            // 逻辑/集合符号
+            '\\infty': '∞', '\\forall': '∀', '\\exists': '∃', '\\nexists': '∄',
+            '\\emptyset': '∅', '\\varnothing': '∅', '\\cup': '∪', '\\cap': '∩',
+            '\\neg': '¬', '\\land': '∧', '\\lor': '∨',
+            // 推理符号
+            '\\because': '∵', '\\therefore': '∴',
+            // 其他常用符号
+            '\\partial': '∂', '\\nabla': '∇', '\\ell': 'ℓ',
+            '\\prime': '′', '\\degree': '°', '\\surd': '√',
+            '\\dots': '…', '\\ldots': '…', '\\cdots': '⋯',
+            '\\vdots': '⋮', '\\ddots': '⋱',
+            // 特殊括号
+            '\\{': '{', '\\}': '}', '\\lbrace': '{', '\\rbrace': '}',
+            '\\langle': '⟨', '\\rangle': '⟩', '\\lceil': '⌈', '\\rceil': '⌉',
+            '\\lfloor': '⌊', '\\rfloor': '⌋',
+        };
+
+        // 按长度降序排序，确保更长命令先匹配（避免 \\sin 被 \\sim 误匹配）
+        const SORTED_CMDS = Object.entries(COMMANDS).sort((a, b) => b[0].length - a[0].length);
+
+        while (i < latex.length) {
+            const remaining = latex.substring(i);
+
+            // ── \frac{num}{den} ──
+            if (remaining.startsWith('\\frac')) {
+                const num = extractBraced(latex, i + 5);
+                const den = extractBraced(latex, num.next);
+                children.push(new MathFraction({
+                    numerator: parseMathToDocx(num.content || ' '),
+                    denominator: parseMathToDocx(den.content || ' ')
+                }));
+                i = den.next;
+                continue;
+            }
+
+            // ── \sqrt{n} 或 \sqrt[n]{a} ──
+            if (remaining.startsWith('\\sqrt')) {
+                let contentStart = i + 5;
+                let degContent = null;
+                if (latex[contentStart] === '[') {
+                    const deg = extractBracketed(latex, contentStart);
+                    degContent = deg.content;
+                    contentStart = deg.next;
+                }
+                const body = extractBraced(latex, contentStart);
+                children.push(new MathRadical({
+                    children: parseMathToDocx(body.content || ' '),
+                    degree: degContent ? parseMathToDocx(degContent) : undefined
+                }));
+                i = body.next;
+                continue;
+            }
+
+            // ── \begin{cases} ... \end{cases} ──
+            // docx.js 无 MathDelimiter/MathMatrix，用大括号 + 分行文本模拟
+            if (remaining.startsWith('\\begin{cases}')) {
+                let endIdx = latex.indexOf('\\end{cases}', i);
+                if (endIdx === -1) endIdx = latex.length;
+                const inner = latex.substring(i + 13, endIdx);
+                const rows = inner.split('\\\\').map(r => r.trim()).filter(Boolean);
+                children.push(new MathRun('{'));
+                rows.forEach((row, ridx) => {
+                    const cols = row.split('&').map(c => c.trim()).filter(Boolean);
+                    if (ridx > 0) {
+                        children.push(new MathRun(' '));
+                    }
+                    cols.forEach((col, cidx) => {
+                        if (cidx > 0) children.push(new MathRun(', '));
+                        children.push(...parseMathToDocx(col));
+                    });
+                });
+                i = endIdx + 11;
+                continue;
+            }
+
+            // ── \begin{aligned*} / \begin{array} ──
+            if (/^\\begin\{(aligned\*?|array\{[^}]*\})\}/.test(remaining)) {
+                let match = remaining.match(/^\\begin\{([^}]+)\}/);
+                let envName = match[1];
+                let envEndLen = match[0].length;
+                let endIdx = latex.indexOf('\\end{' + envName + '}', i + envEndLen);
+                if (endIdx === -1) endIdx = latex.length;
+                const inner = latex.substring(i + envEndLen, endIdx);
+                const rows = inner.split('\\\\').map(r => r.trim()).filter(Boolean);
+                rows.forEach((row, ridx) => {
+                    if (ridx > 0) children.push(new MathRun('; '));
+                    const cols = row.split('&').map(c => c.trim()).filter(Boolean);
+                    cols.forEach((col, cidx) => {
+                        if (cidx > 0) children.push(new MathRun('  '));
+                        children.push(...parseMathToDocx(col));
+                    });
+                });
+                i = endIdx + ('\\end{' + envName + '}').length;
+                continue;
+            }
+
+            // ── \left / \right 括号缩放 ──
+            // 把 \left( ... \right) 当作普通括号对处理
+            if (remaining.startsWith('\\left')) {
+                i += 5;
+                while (i < latex.length && latex[i] === ' ') i++;
+                // 输出左括号
+                if (i < latex.length) {
+                    if (latex[i] === '\\') {
+                        i++;
+                        if (latex.startsWith('{', i)) {
+                            children.push(new MathRun('{')); i++;
+                        } else if (latex.startsWith('langle', i)) {
+                            children.push(new MathRun('⟨')); i += 6;
+                        } else {
+                            let fb = false;
+                            for (const [cmd, sym] of SORTED_CMDS) { if (latex.startsWith(cmd, i)) { children.push(new MathRun(sym)); i += cmd.length; fb = true; break; } }
+                            if (!fb) { children.push(new MathRun(latex[i] || '(')); i++; }
+                        }
+                    } else {
+                        children.push(new MathRun(latex[i])); i++;
+                    }
+                }
+                // 找到 \right 并输出右括号
+                let rightPos = latex.indexOf('\\right', i);
+                if (rightPos !== -1 && rightPos - i < 100) {
+                    // 先递归解析 \left 和 \right 之间的内容
+                    const middleContent = latex.substring(i, rightPos).trim();
+                    if (middleContent) {
+                        children.push(...parseMathToDocx(middleContent));
+                    }
+                    // 跳过 \right 和右括号
+                    i = rightPos + 6;
+                    while (i < latex.length && latex[i] === ' ') i++;
+                    if (i < latex.length) {
+                        if (latex[i] === '\\') {
+                            i++;
+                            if (latex.startsWith('}', i)) { children.push(new MathRun('}')); i++; }
+                            else if (latex.startsWith('rangle', i)) { children.push(new MathRun('⟩')); i += 6; }
+                            else if (latex.startsWith('rbrace', i)) { children.push(new MathRun('}')); i += 6; }
+                            else { children.push(new MathRun(latex[i] || ')')); i++; }
+                        } else {
+                            children.push(new MathRun(latex[i])); i++;
+                        }
+                    }
+                } else {
+                    // 只剩 \left 没有 \right，正常解析后续内容
+                }
+                continue;
+            }
+            if (remaining.startsWith('\\right')) {
+                // 孤立的 \right，输出右括号
+                i += 6;
+                while (i < latex.length && latex[i] === ' ') i++;
+                if (i < latex.length) {
+                    if (latex[i] === '\\') {
+                        i++;
+                        if (latex.startsWith('}', i)) { children.push(new MathRun('}')); i++; }
+                        else if (latex.startsWith('rangle', i)) { children.push(new MathRun('⟩')); i += 6; }
+                        else if (latex.startsWith('rbrace', i)) { children.push(new MathRun('}')); i += 6; }
+                        else { children.push(new MathRun(latex[i] || ')')); i++; }
+                    } else { children.push(new MathRun(latex[i])); i++; }
+                }
+                continue;
+            }
+
+            // ── \text{...} / \mathrm{...} / \mathbf{...} ──
+            if (/^\\text\s*\{/.test(remaining) || /^\\mathrm\s*\{/.test(remaining) || /^\\mathbf\s*\{/.test(remaining)) {
+                let cmdLen = remaining.startsWith('\\text') ? 5 : remaining.startsWith('\\mathrm') ? 7 : 7;
+                const body = extractBraced(latex, i + cmdLen);
+                children.push(new MathRun(body.content || ''));
+                i = body.next;
+                continue;
+            }
+
+            // ── \overline{...} / \underline{...} ──
+            if (/^\\overline\s*\{/.test(remaining) || /^\\underline\s*\{/.test(remaining)) {
+                let cmdLen = remaining.startsWith('\\overline') ? 9 : 10;
+                const body = extractBraced(latex, i + cmdLen);
+                const content = body.content || '';
+                if (remaining.startsWith('\\overline')) {
+                    children.push(new MathRun(content + '̅'));
+                } else {
+                    children.push(new MathRun(content + '̲'));
+                }
+                i = body.next;
+                continue;
+            }
+
+            // ── \overrightarrow{...} / \overleftarrow{...} ──
+            if (/^\\overrightarrow\s*\{/.test(remaining) || /^\\overleftarrow\s*\{/.test(remaining)) {
+                let cmdLen = 15;
+                const body = extractBraced(latex, i + cmdLen);
+                const arrow = remaining.startsWith('\\overrightarrow') ? '→' : '←';
+                children.push(new MathRun((body.content || '') + arrow));
+                i = body.next;
+                continue;
+            }
+
+            // ── \hat{x} / \bar{x} / \vec{x} / \widetilde{x} / \widehat{x} ──
+            const ACCENT_MAP = { '\\hat': '̂', '\\bar': '̄', '\\vec': '⃗', '\\tilde': '̃', '\\dot': '̇', '\\widehat': '̂', '\\widetilde': '̃' };
+            let accentFound = false;
+            for (const [accent, marker] of Object.entries(ACCENT_MAP)) {
+                if (remaining.startsWith(accent)) {
+                    i += accent.length;
+                    let body;
+                    if (i < latex.length && latex[i] === '{') {
+                        body = extractBraced(latex, i);
+                        children.push(new MathRun(body.content + marker));
+                        i = body.next;
+                    } else if (i < latex.length) {
+                        children.push(new MathRun(latex[i] + marker));
+                        i++;
+                    }
+                    accentFound = true;
+                    break;
+                }
+            }
+            if (accentFound) continue;
+
+            // ── 上标 ^ ──
+            if (latex[i] === '^') {
+                const prev = children.pop();
+                let upper;
+                i++;
+                while (i < latex.length && latex[i] === ' ') i++;
+                if (latex[i] === '{') {
+                    const res = extractBraced(latex, i);
+                    upper = res.content;
+                    i = res.next;
+                } else {
+                    upper = latex[i] || '';
+                    i++;
+                }
+                children.push(new MathSuperScript({
+                    children: prev ? [prev] : [new MathRun('')],
+                    superScript: parseMathToDocx(upper)
+                }));
+                continue;
+            }
+
+            // ── 下标 _ ──
+            if (latex[i] === '_') {
+                const prev = children.pop();
+                let lower;
+                i++;
+                while (i < latex.length && latex[i] === ' ') i++;
+                if (latex[i] === '{') {
+                    const res = extractBraced(latex, i);
+                    lower = res.content;
+                    i = res.next;
+                } else {
+                    lower = latex[i] || '';
+                    i++;
+                }
+                children.push(new MathSubScript({
+                    children: prev ? [prev] : [new MathRun('')],
+                    subScript: parseMathToDocx(lower)
+                }));
+                continue;
+            }
+
+            // ── 转义命令 ──
+            if (latex[i] === '\\') {
+                let found = false;
+                // 先尝试运算符/函数名
+                for (const [cmd, name] of Object.entries(OPERATOR_NAMES)) {
+                    if (latex.startsWith(cmd, i)) {
+                        children.push(new MathRun(name + ' '));
+                        i += cmd.length;
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) continue;
+
+                // 再尝试符号命令（已按长度降序）
+                for (const [cmd, sym] of SORTED_CMDS) {
+                    if (latex.startsWith(cmd, i)) {
+                        children.push(new MathRun(sym));
+                        i += cmd.length;
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) continue;
+
+                // 未识别的命令，跳过反斜杠
+                i++;
+                continue;
+            }
+
+            // ── 标点、运算符、括号（字面量输出） ──
+            if (['(', ')', '[', ']', '+', '-', '=', '>', '<', ',', '.', ':', ';', ' ', '*', '/', '|', '!', '?', '"', '&', '%', '~', '`', '\''].includes(latex[i])) {
+                children.push(new MathRun(latex[i]));
+                i++;
+                continue;
+            }
+
+            // ── 花括号 { }（LLM 输出的字面量花括号，如集合表示） ──
+            if (latex[i] === '{' || latex[i] === '}') {
+                children.push(new MathRun(latex[i]));
+                i++;
+                continue;
+            }
+
+            // ── 数字与字母（变量，数学斜体） ──
+            children.push(new MathRun(latex[i]));
+            i++;
+        }
+        return children;
+    };
 
     const A4_WIDTH = 11906;
     const A4_HEIGHT = 16838;
@@ -1183,19 +1726,38 @@ async function buildDocxBlob(structure) {
         font: options.font
     });
 
-    const bodyParagraph = (text, extra = {}) => new Paragraph({
-        spacing: { after: 120, line: 360 },
-        alignment: extra.alignment || AlignmentType.JUSTIFIED,
-        indent: extra.indent,
-        children: [
-            makeRun(text, {
-                font: extra.font || 'SimSun',
-                size: extra.size || 24,
-                bold: extra.bold || false,
-                color: extra.color || '1F2937'
-            })
-        ]
-    });
+    const bodyParagraph = (text, extra = {}) => {
+        const runs = [];
+        // 统一处理：将 $$...$$ 标准化为 $...$ 以避免 split 错位
+        const normalized = text.replace(/\$\$([\s\S]+?)\$\$/g, '$$1$');
+        const parts = normalized.split('$');
+        
+        parts.forEach((part, index) => {
+            if (index % 2 === 0) {
+                if (part) {
+                    runs.push(new TextRun({
+                        text: part,
+                        font: extra.font || 'SimSun',
+                        size: extra.size || 24,
+                        bold: extra.bold || false,
+                        color: extra.color || '1F2937'
+                    }));
+                }
+            } else {
+                runs.push(new Math({
+                    children: parseMathToDocx(part)
+                }));
+            }
+        });
+
+        return new Paragraph({
+            spacing: { after: 120, line: 360 },
+            alignment: extra.alignment || AlignmentType.JUSTIFIED,
+            indent: extra.indent || (extra.shading ? { left: 120, right: 120 } : undefined),
+            shading: extra.shading ? { fill: extra.shading, type: ShadingType.CLEAR } : undefined,
+            children: runs
+        });
+    };
 
     const labelParagraph = (text) => new Paragraph({
         spacing: { before: 80, after: 80 },
@@ -1259,14 +1821,7 @@ async function buildDocxBlob(structure) {
         if (question.tips.length) {
             children.push(labelParagraph('【易错点提醒】'));
             question.tips.forEach((line) => {
-                children.push(
-                    new Paragraph({
-                        spacing: { after: 120, line: 360 },
-                        shading: { fill: 'FFF7ED', type: ShadingType.CLEAR },
-                        indent: { left: 120, right: 120 },
-                        children: [makeRun(line, { font: 'SimSun', size: 24, color: '9A3412' })]
-                    })
-                );
+                children.push(bodyParagraph(line, { shading: 'FFF7ED', color: '9A3412' }));
             });
         }
 

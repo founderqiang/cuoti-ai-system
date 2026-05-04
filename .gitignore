@@ -24,5 +24,8 @@ ENV/
 .docx_render_check/
 artifacts/rendered/
 
+# Dev tooling / scratch scripts
+scratch/
+
 # macOS garbage
 .DS_Store

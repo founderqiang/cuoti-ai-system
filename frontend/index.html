@@ -12,6 +12,10 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <!-- Marked.js for markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+    <!-- KaTeX for math rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"></script>
     <!-- docx.js for structured .docx generation -->
     <script src="https://unpkg.com/docx@9.5.1/dist/index.umd.cjs"></script>
     <!-- HTML-DOCX for real .docx generation -->
@@ -372,6 +376,7 @@
                 </div>
 
                 <div id="generateContent" style="display:none;"></div>
+                <div id="bottomExportArea" style="display:none; text-align:center; margin-top:24px; padding-top:20px; border-top:1px solid rgba(148,163,184,0.14);"></div>
             </div>
         </section>
 

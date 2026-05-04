@@ -9,6 +9,7 @@
 
 import os
 import json
+import re
 import traceback
 from io import BytesIO
 
@@ -294,22 +295,60 @@ def diagnose_errors():
 
 请进行详细的错因归因分析，并为教师提供下节课的讲评策略建议。请直接输出JSON，不要包含markdown代码块标记。"""
 
-    result = call_llm(system_prompt, user_prompt, temperature=0.5)
+    result = call_llm(system_prompt, user_prompt, temperature=0.3)
     
     # 尝试解析JSON
+    parsed = None
+    raw_json_str = result
+    # 先去除常见的 markdown 代码块标记
+    md_block_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', result, re.DOTALL)
+    if md_block_match:
+        raw_json_str = md_block_match.group(1).strip()
     try:
         # 寻找第一个 { 和最后一个 }
-        start_idx = result.find('{')
-        end_idx = result.rfind('}')
-        if start_idx != -1 and end_idx != -1:
-            cleaned = result[start_idx:end_idx+1]
+        start_idx = raw_json_str.find('{')
+        end_idx = raw_json_str.rfind('}')
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            cleaned = raw_json_str[start_idx:end_idx+1]
+            parsed = json.loads(cleaned)
         else:
-            cleaned = result.strip()
-            
-        parsed = json.loads(cleaned, strict=False)
-        return jsonify({'success': True, 'data': parsed, 'raw': result})
+            cleaned = raw_json_str.strip()
+            parsed = json.loads(cleaned)
     except Exception:
-        return jsonify({'success': True, 'data': None, 'raw': result})
+        # 降级：尝试逐字段正则提取关键信息
+        try:
+            parsed = {}
+            m_title = re.search(r'"overall_analysis"\s*:\s*"([^"]*)"', result, re.DOTALL)
+            if m_title:
+                parsed['overall_analysis'] = m_title.group(1)
+            m_diag = re.search(r'"diagnosis"\s*:\s*\[(.*?)\](?=\s*[,}\]])', result, re.DOTALL)
+            if m_diag:
+                parsed['diagnosis'] = []
+                # 提取每个 item 的关键字段
+                for item_match in re.finditer(r'\{(.*?)\}', m_diag.group(1), re.DOTALL):
+                    item = {}
+                    kp = re.search(r'"knowledge_point"\s*:\s*"([^"]*)"', item_match.group(1))
+                    if kp: item['knowledge_point'] = kp.group(1)
+                    rate = re.search(r'"error_rate"\s*:\s*([\d.]+)', item_match.group(1))
+                    if rate: item['error_rate'] = float(rate.group(1))
+                    causes_raw = re.search(r'"error_causes"\s*:\s*\[(.*?)\]', item_match.group(1), re.DOTALL)
+                    if causes_raw:
+                        item['error_causes'] = [c.strip().strip('"') for c in causes_raw.group(1).split(',') if c.strip()]
+                    detail = re.search(r'"cause_details"\s*:\s*"([^"]*)"', item_match.group(1))
+                    if detail: item['cause_details'] = detail.group(1)
+                    sev = re.search(r'"severity"\s*:\s*"([^"]*)"', item_match.group(1))
+                    if sev: item['severity'] = sev.group(1)
+                    if item.get('knowledge_point'):
+                        parsed['diagnosis'].append(item)
+            m_strategy = re.search(r'"teaching_strategy"\s*:\s*(\{.*?\})\s*(?=[,}\]])', result, re.DOTALL)
+            if m_strategy:
+                try:
+                    parsed['teaching_strategy'] = json.loads(m_strategy.group(1))
+                except Exception:
+                    parsed['teaching_strategy'] = {}
+        except Exception:
+            parsed = None
+    return jsonify({'success': True, 'data': parsed, 'raw': result})
 
 
 @app.route('/api/generate', methods=['POST'])
@@ -328,7 +367,7 @@ def generate_variants():
     if not knowledge_point:
         return jsonify({'error': '请指定需要生成变式题的知识点'}), 400
     
-    system_prompt = rf"""你是一位顶尖的初中数学命题专家，专精于设计高质量的变式训练题。
+    system_prompt = r"""你是一位顶尖的初中数学命题专家，专精于设计高质量的变式训练题。
 
 核心要求：
 1. 根据给定的薄弱知识点和错因分析，设计{count}道有针对性的变式训练题
@@ -336,18 +375,22 @@ def generate_variants():
 3. 每一道题都必须具有极强的针对性，直接瞄准学生的典型错因进行矫正
 4. 必须提供详细的解题步骤和易错点提醒
 5. 题目要新颖，避免简单改数字的低级变式
-6. 【数学逻辑严密性】：确保题目逻辑严密，解析过程严谨无误。涉及函数图像判断、多参数关联（如直线与抛物线共用参数b）等复杂逻辑时，必须在输出前进行内部逻辑校验，确保结论唯一且正确，严禁出现逻辑自相矛盾。
-7. 【纯文本无图排版，禁用LaTeX】：坚决不使用 SVG、Python 绘图代码、Markdown 代码块或任何程序化作图内容。若题目涉及几何图形，只能使用清晰、完整、可操作的中文文字描述图形关系，并补上一句固定提醒：“**注：由于技术限制，图形请根据以上描述自行规范绘制。**”【极其重要】：绝不能使用任何 LaTeX 数学代码（严禁出现 `\frac`, `\Rightarrow` 等）！所有的数学公式必须写成键盘能直接敲出的纯字符形式（例如使用 `b/(2a)`，`x^2`，`=>`），保证导出到普通 Word 后肉眼直接可读。
-8. 【详细解析——极度精简原则】：每道题的【详细解析】严格控制在 200 字以内，必须提炼成 3~5 个简明步骤（用 ① ② ③ 分步），每一句都是直击结论的干货。彻底禁止以下行为：
-   - 禁止自我质疑、自我修正、推倒重来（如"更严谨的说法…""其实…""我们重新推导…"）—— 直接给出最终正确结论
-   - 禁止写"由图像可看出""推测""可能""大概""似乎是"等不确定用语 —— 每个结论必须有明确依据
-   - 禁止举无关特例、发散讨论、冗余的定理解释
-   - 禁止复述题干已知条件凑字数
-9. 【全局长度控制】：必须且只能生成 {count} 道题目，满 {count} 题立刻停止输出，不得追加任何总结、备注或额外说明。
+6. 【数学逻辑严密性】：确保题目逻辑严密，解析过程严谨无误。涉及几何证明、函数图像等复杂逻辑时，必须在输出前进行内部闭环校验，确保结论正确。
+7. 【结果唯一产出原则】：**严禁**在输出中包含任何形式的“思考过程”、“修改逻辑”、“方案对比”或“自我纠正”。无论你在生成过程中发现什么逻辑矛盾，请在输出前默默修正。最终呈现给用户的必须是一个**干净、完整、没有冗余废话**的单一版本。严禁出现“题目修正版”、“建议改为...”等字样。
+8. 【数学公式排版 - 极度严格】：
+    - **必须**使用标准的 LaTeX 格式，且**每一段**数学表达式（包括简单的变量）都必须用单个 $ 符号包围。
+    - **严禁**使用“键盘风格”的数学写法（如 `x^ 2`, `sqrt(x)`, `y = 2x+1` 等），必须写成 `$x^2$`, `$\sqrt{x}$`, `$y = 2x + 1$`。
+    - 指数必须紧跟变量（如 `$x^2$`），不得在 `^` 后加空格。
+    - 对于方程组，**必须**使用 `$\begin{cases} ... \end{cases}$` 格式，并确保包含反斜杠。
+    - 确保生成的 LaTeX 代码在预览和 Word 导出时能被系统精准解析。
+9. 【图形排版】：坚决不使用 SVG、Python 绘图代码或 Markdown 代码块。若题目涉及几何图形，只能使用清晰、完整、可操作的中文文字描述图形关系，并补上一句固定提醒：“**注：由于技术限制，图形请根据以上描述自行规范绘制。**”
+10. 【详细解析——极度精简原则】：每道题的【详细解析】严格控制在 200 字以内，必须提炼成 3~5 个简明步骤（用 ① ② ③ 分步），每一句都是直击结论的干货。
+11. 【全局长度控制】：必须且只能生成 {count} 道题目，满 {count} 题立刻停止输出，不得追加任何总结、备注或额外说明。
+12. 【零空档位原则】：只输出实际包含题目的难度档位标题。**严禁输出没有题目的空档位**（如只写了`## 三、拓展挑战（★★★）`但没有题目内容）。若某个难度档位没有分配题目，则连该档位的`##`标题也不得出现。
 
 输出格式要求：
 请直接输出纯文本（使用清晰的中文排版，方便教师直接复制到Word中），不要使用任何JSON格式，也不要包含任何英文的格式标签。
-推荐排版方式如下：
+输出示例（仅作为格式参考，实际内容请自行设计，务必满{count}题即停）：
 
 # [知识点名称] 靶向变式训练
 针对错因：[错因1]、[错因2]
@@ -362,14 +405,16 @@ def generate_variants():
 ...
 
 **【详细解析】**
-（在此处直接输出 3~5 个精简步骤，不要包含“限200字”等字样）
+（在此处直接输出 3~5 个精简步骤，不要包含"限200字"等字样）
 ...
 
 **【易错点提醒】**
 ...
 
-## 二、能力提升（★★）
-...以此类推"""
+**【题目 2】**
+...（依次连续编号至{count}题，输出完毕立即停止，后面不要出现任何其他内容）
+
+注意：题目编号必须连续从1到{count}，不得跳过任何编号，也不得出超过{count}的编号。""".replace('{count}', str(count))
 
     error_causes_text = '、'.join(error_causes) if error_causes else '未指定'
     
@@ -394,8 +439,8 @@ def generate_variants():
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.8,
-            max_tokens=max(8192, count * 4096),
+            temperature=0.3,
+            max_tokens=max(8192, count * 2800),
             stream=True
         )
         
