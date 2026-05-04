@@ -17,6 +17,7 @@ let selectedKP = null;         // 当前选中的知识点
 let radarChartInstance = null;
 let barChartInstance = null;
 let lastGeneratedText = '';
+let lastStructure = null;       // 缓存最后一次解析的结构，避免重复解析
 const DOC_QUESTION_TITLE_PATTERN = /【题目\s*\d+】/;
 const DOC_SECTION_LABEL_PATTERN = /【(参考答案|详细解析|易错点提醒)】/;
 const DOC_KEYPOINT_PATTERN = /^[（(]考查要点[:：]/;
@@ -715,6 +716,7 @@ async function generateVariants() {
     const container = document.getElementById('generateContent');
     container.style.display = 'block';
     lastGeneratedText = '';
+    lastStructure = null;
     
     // 使用统一的 markdown 样式容器，方便直接复制进入 Word
     container.innerHTML = `
@@ -803,8 +805,8 @@ async function generateVariants() {
         if (finalChunk) {
             fullText += finalChunk;
         }
-        // 最后一次完整渲染
-        renderGeneratedContent(target, fullText);
+        // 最后一次完整渲染（延迟 KaTeX 避免阻塞 UI）
+        renderGeneratedContent(target, fullText, true);
         
         // 如果检测到截断，在预览顶部插入醒目的截断警告
         if (truncated || fullText.includes(TRUNCATION_MARKER)) {
@@ -850,11 +852,10 @@ async function generateVariants() {
         btn.disabled = false;
         btn.textContent = '✨ 重新生成变式题';
         
-        // 激活导出按钮：解析生成内容，确认是否有实际题目
+        // 激活导出按钮：使用缓存的解析结构，避免重复解析
         const exportBtn = document.getElementById('btnExportWord');
         const bottomArea = document.getElementById('bottomExportArea');
-        const parsed = parseGeneratedStructure(lastGeneratedText);
-        const hasQuestions = parsed.sections.some(s => s.questions && s.questions.length > 0);
+        const hasQuestions = lastStructure && lastStructure.sections.some(s => s.questions && s.questions.length > 0);
         const isTruncated = (typeof truncated !== 'undefined' && truncated);
         
         if (exportBtn) {
@@ -968,20 +969,33 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function renderGeneratedContent(target, markdownText) {
+function renderGeneratedContent(target, markdownText, deferKaTeX = false) {
     lastGeneratedText = markdownText;
-    const structure = parseGeneratedStructure(markdownText);
-    target.innerHTML = buildStructuredDocumentHtml(structure, 'preview');
+    lastStructure = parseGeneratedStructure(markdownText);
+    target.innerHTML = buildStructuredDocumentHtml(lastStructure, 'preview');
     
     // 渲染数学公式
     if (window.renderMathInElement) {
-        renderMathInElement(target, {
-            delimiters: [
-                {left: '$', right: '$', display: false},
-                {left: '$$', right: '$$', display: true}
-            ],
-            throwOnError: false
-        });
+        if (deferKaTeX) {
+            // 延迟 KaTeX 渲染，避免阻塞 UI（导出按钮可立即出现）
+            setTimeout(() => {
+                renderMathInElement(target, {
+                    delimiters: [
+                        {left: '$', right: '$', display: false},
+                        {left: '$$', right: '$$', display: true}
+                    ],
+                    throwOnError: false
+                });
+            }, 50);
+        } else {
+            renderMathInElement(target, {
+                delimiters: [
+                    {left: '$', right: '$', display: false},
+                    {left: '$$', right: '$$', display: true}
+                ],
+                throwOnError: false
+            });
+        }
     }
 }
 
