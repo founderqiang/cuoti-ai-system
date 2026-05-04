@@ -1408,7 +1408,7 @@ async function buildDocxBlob(structure) {
             '\\uparrow': '↑', '\\downarrow': '↓', '\\updownarrow': '↕',
             // 二元运算符
             '\\times': '×', '\\div': '÷', '\\cdot': '·', '\\pm': '±', '\\mp': '∓',
-            '\\ast': '∗', '\\bullet': '•',
+            '\\circ': '°', '\\ast': '∗', '\\bullet': '•',
             '\\oplus': '⊕', '\\ominus': '⊖', '\\otimes': '⊗', '\\oslash': '⊘', '\\odot': '⊙',
             '\\wedge': '∧', '\\vee': '∨', '\\setminus': '∖',
             // 大型运算符
@@ -1641,6 +1641,32 @@ async function buildDocxBlob(structure) {
                     const res = extractBraced(latex, i);
                     upper = res.content;
                     i = res.next;
+                } else if (latex[i] === '\\') {
+                    // 上标是 LaTeX 命令（如 ^\circ），匹配完整命令名
+                    let matched = false;
+                    for (const [cmd, sym] of SORTED_CMDS) {
+                        if (latex.startsWith(cmd, i)) {
+                            upper = sym;
+                            i += cmd.length;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    // 也尝试运算符名
+                    if (!matched) {
+                        for (const [cmd, name] of Object.entries(OPERATOR_NAMES)) {
+                            if (latex.startsWith(cmd, i)) {
+                                upper = name;
+                                i += cmd.length;
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!matched) {
+                        upper = latex[i] || '';
+                        i++;
+                    }
                 } else {
                     upper = latex[i] || '';
                     i++;
@@ -1662,6 +1688,31 @@ async function buildDocxBlob(structure) {
                     const res = extractBraced(latex, i);
                     lower = res.content;
                     i = res.next;
+                } else if (latex[i] === '\\') {
+                    // 下标是 LaTeX 命令（如 _\infty），匹配完整命令名
+                    let matched = false;
+                    for (const [cmd, sym] of SORTED_CMDS) {
+                        if (latex.startsWith(cmd, i)) {
+                            lower = sym;
+                            i += cmd.length;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (!matched) {
+                        for (const [cmd, name] of Object.entries(OPERATOR_NAMES)) {
+                            if (latex.startsWith(cmd, i)) {
+                                lower = name;
+                                i += cmd.length;
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!matched) {
+                        lower = latex[i] || '';
+                        i++;
+                    }
                 } else {
                     lower = latex[i] || '';
                     i++;
