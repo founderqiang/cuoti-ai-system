@@ -28,6 +28,7 @@ CORS(app)
 LLM_API_KEY = os.getenv('LLM_API_KEY', '')
 LLM_BASE_URL = os.getenv('LLM_BASE_URL', 'https://api.deepseek.com/v1')
 LLM_MODEL = os.getenv('LLM_MODEL', 'deepseek-v4-pro')
+ALLOW_UNSAFE_PLOT_CODE = os.getenv('ALLOW_UNSAFE_PLOT_CODE', '').lower() in {'1', 'true', 'yes'}
 
 client = None
 if LLM_API_KEY:
@@ -522,6 +523,12 @@ def generate_sample_data():
 @app.route('/api/render_plot', methods=['POST'])
 def render_plot():
     """接收前台传来的 Matplotlib 代码由 AI 编写，在沙箱执行后返回图片 base64"""
+    if not ALLOW_UNSAFE_PLOT_CODE:
+        return jsonify({
+            'error': '服务端代码绘图默认关闭。仅在可信的本地环境中设置 '
+                     'ALLOW_UNSAFE_PLOT_CODE=true 后启用。'
+        }), 403
+
     data = request.json
     code = data.get('code', '')
     if not code:
@@ -608,7 +615,8 @@ def health_check():
     return jsonify({
         'status': 'ok',
         'llm_configured': bool(LLM_API_KEY),
-        'llm_model': LLM_MODEL
+        'llm_model': LLM_MODEL,
+        'unsafe_plot_code_enabled': ALLOW_UNSAFE_PLOT_CODE
     })
 
 
@@ -618,4 +626,5 @@ if __name__ == '__main__':
     print("  服务启动中...")
     print(f"  大模型状态: {'已配置 (' + LLM_MODEL + ')' if LLM_API_KEY else '未配置 - 请设置 .env'}")
     print("=" * 60)
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    debug_enabled = os.getenv('FLASK_DEBUG', '').lower() in {'1', 'true', 'yes'}
+    app.run(host='0.0.0.0', port=5000, debug=debug_enabled)
