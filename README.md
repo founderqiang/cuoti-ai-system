@@ -148,6 +148,10 @@ python backend/app.py
 
 欢迎提交错误样例、教学需求、文档改进和代码修复。开始前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## 📄 许可证
+
+本项目采用 [MIT License](LICENSE)。
+
 ---
 
 *创AI案例 · 面向精准教学的错题归因与靶向变式智能生成系统*
